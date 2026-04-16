@@ -130,3 +130,5 @@ export default function TodoPage() { // Our main functional component for the pa
     </div>
   );
 }
+
+// pm2 start npm --name "my-app" -- start -- -p 3031
