@@ -1,14 +1,37 @@
 'use client'; // Tell Next.js this is a Client Component so we can use state and interactivity
 
 import { useState, useEffect } from 'react'; // Import state and effect hooks from React
+import Keycloak from 'keycloak-js'; // Import Keycloak for authentication
 import Link from 'next/link'; // Import Link for internal routing
 
 export default function TodoPage() { // Our main functional component for the page
   const [todos, setTodos] = useState([]); // Create state to store our list of todos
   const [input, setInput] = useState(''); // Create state to manage the text in our input field
   const [loading, setLoading] = useState(true); // Create a loading state to show while fetching data
+  
+  // -- AUTH STATE --
+  const [authenticated, setAuthenticated] = useState(false);
+  const [keycloak, setKeycloak] = useState(null);
 
   useEffect(() => { // Hook that runs once when the component finishes mounting
+    // Initialize Keycloak
+    const initAuth = async () => {
+      const kc = new Keycloak({
+        url: process.env.NEXT_PUBLIC_KEYCLOAK_URL,
+        realm: process.env.NEXT_PUBLIC_KEYCLOAK_REALM,
+        clientId: process.env.NEXT_PUBLIC_KEYCLOAK_CLIENT_ID,
+      });
+      
+      try {
+        const authed = await kc.init({ onLoad: 'check-sso' });
+        setKeycloak(kc);
+        setAuthenticated(authed);
+      } catch (err) {
+        console.error("Auth init failed", err);
+      }
+    };
+
+    initAuth();
     fetchTodos(); // Call our custom fetch function
   }, []); // Empty dependency array ensures this only runs once
 
@@ -81,52 +104,83 @@ export default function TodoPage() { // Our main functional component for the pa
         </div>
 
         <div className="p-8"> {/* Body padding */}
-          <form onSubmit={addTodo} className="flex gap-3 mb-8"> {/* Input form */}
-            <input
-              type="text"
-              className="flex-1 rounded-xl border-slate-200 border-2 p-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-              placeholder="What's your next move?"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-            />
-            <button className="bg-blue-600 text-white font-bold px-6 py-3 rounded-xl hover:bg-blue-700 active:scale-95 transition-all">
-              Add
-            </button>
-          </form>
-
-          {loading ? (<div className="text-center py-10 text-slate-400 animate-pulse">Loading your tasks...</div>) : ( // Status check
-            <div className="space-y-3"> {/* Task list spacing */}
-              {todos.length === 0 ? (<p className="text-center text-slate-400 italic">No tasks today. Enjoy!</p>) : ( // Empty check
-                todos.map((todo) => ( // Loop tasks
-                  <div key={todo._id} className="group flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-transparent hover:border-blue-100 transition-all shadow-sm"> {/* Task item */}
-                    <div className="flex items-center gap-4"> {/* Inner content */}
-                      <input
-                        type="checkbox"
-                        checked={todo.completed}
-                        onChange={() => toggleTodo(todo._id, todo.completed)}
-                        className="w-6 h-6 rounded-md border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                      />
-                      <span className={`${todo.completed ? 'line-through text-slate-300' : 'text-slate-700 font-medium'}`}>
-                        {todo.task}
-                      </span>
-                    </div>
-                    <button onClick={() => deleteTodo(todo._id)} className="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all text-sm font-bold">
-                      Delete
-                    </button>
-                  </div>
-                ))
-              )}
+          {!authenticated ? (
+            <div className="text-center py-10">
+              <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 mb-8">
+                <p className="text-blue-800 font-semibold mb-2">Authentication Required</p>
+                <p className="text-blue-600 text-sm italic">
+                  Please sign in to manage your focus tasks.
+                </p>
+              </div>
+              <button 
+                onClick={() => keycloak?.login()}
+                className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl hover:bg-blue-700 transition"
+              >
+                Sign In to Get Started
+              </button>
             </div>
+          ) : (
+            <>
+              <form onSubmit={addTodo} className="flex gap-3 mb-8"> {/* Input form */}
+                <input
+                  type="text"
+                  className="flex-1 rounded-xl border-slate-200 border-2 p-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                  placeholder="What's your next move?"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                />
+                <button className="bg-blue-600 text-white font-bold px-6 py-3 rounded-xl hover:bg-blue-700 active:scale-95 transition-all">
+                  Add
+                </button>
+              </form>
+
+              {loading ? (<div className="text-center py-10 text-slate-400 animate-pulse">Loading your tasks...</div>) : ( // Status check
+                <div className="space-y-3"> {/* Task list spacing */}
+                  {todos.length === 0 ? (<p className="text-center text-slate-400 italic">No tasks today. Enjoy!</p>) : ( // Empty check
+                    todos.map((todo) => ( // Loop tasks
+                      <div key={todo._id} className="group flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-transparent hover:border-blue-100 transition-all shadow-sm"> {/* Task item */}
+                        <div className="flex items-center gap-4"> {/* Inner content */}
+                          <input
+                            type="checkbox"
+                            checked={todo.completed}
+                            onChange={() => toggleTodo(todo._id, todo.completed)}
+                            className="w-6 h-6 rounded-md border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                          />
+                          <span className={`${todo.completed ? 'line-through text-slate-300' : 'text-slate-700 font-medium'}`}>
+                            {todo.task}
+                          </span>
+                        </div>
+                        <button onClick={() => deleteTodo(todo._id)} className="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all text-sm font-bold">
+                          Delete
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+              
+              <div className="mt-8 pt-6 border-t border-slate-100 flex justify-between items-center">
+                 <span className="text-[10px] text-slate-400 italic">Logged in as {keycloak?.tokenParsed?.preferred_username}</span>
+                 <button 
+                   onClick={() => keycloak?.logout()}
+                   className="text-[10px] text-red-400 hover:text-red-600 font-bold uppercase tracking-widest"
+                 >
+                   Logout
+                 </button>
+              </div>
+            </>
           )}
         </div>
       </div>
 
-      <Link href="/about" className="mt-10 text-slate-400 font-medium hover:text-blue-500 transition-colors">
-        About this project →
-      </Link>
-      <Link href="/company" className="mt-10 text-slate-400 font-medium hover:text-blue-500 transition-colors">
-        Company →
-      </Link>
+      <div className="flex gap-6 mt-10">
+        <Link href="/about" className="text-slate-400 font-medium hover:text-blue-500 transition-colors">
+          About this project →
+        </Link>
+        <Link href="/auth-basic" className="text-slate-400 font-medium hover:text-blue-500 transition-colors">
+          Auth Tutorial →
+        </Link>
+      </div>
     </div>
   );
 }
